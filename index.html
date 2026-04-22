@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>圆柱体展开演示 | 交互式几何教学</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #2D3748;
+            color: #fff;
+            font-family: -apple-system, Arial, Helvetica, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        /* 画布区域 */
+        #canvas-area {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            position: relative;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* 底部控制栏 */
+        #controls {
+            width: 100%;
+            background: #1A202C;
+            padding: 20px 40px;
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            background: #20B2AA;
+            color: #fff;
+            border: none;
+            padding: 10px 28px;
+            font-size: 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        .btn:hover {
+            background: #1a9e97;
+            transform: translateY(-1px);
+        }
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .slider-group label {
+            font-size: 14px;
+            color: #CBD5E0;
+            white-space: nowrap;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 300px;
+            height: 6px;
+            background: #fff;
+            border-radius: 3px;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #B22222;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        /* 数据面板 */
+        #data-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(26, 32, 44, 0.95);
+            border: 1px solid #4A5568;
+            border-radius: 10px;
+            padding: 20px;
+            min-width: 220px;
+            display: none;
+        }
+        #data-panel.show { display: block; }
+        #data-panel h3 {
+            color: #20B2AA;
+            margin-bottom: 12px;
+            font-size: 16px;
+        }
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid #2D3748;
+            font-size: 14px;
+        }
+        .data-row:last-child { border-bottom: none; }
+        .data-label { color: #A0AEC0; }
+        .data-value { color: #fff; font-weight: 600; }
+
+        /* 标题 */
+        #title {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 22px;
+            font-weight: 700;
+            color: #E2E8F0;
+        }
+    </style>
+</head>
+<body>
+    <div id="title">圆柱体展开演示</div>
+
+    <div id="canvas-area">
+        <canvas id="mainCanvas"></canvas>
+        <div id="data-panel">
+            <h3>📐 数据面板</h3>
+            <div class="data-row">
+                <span class="data-label">底面半径</span>
+                <span class="data-value" id="d-radius">60 px</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">圆柱高度</span>
+                <span class="data-value" id="d-height">200 px</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">展开进度</span>
+                <span class="data-value" id="d-progress">0%</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">侧面面积</span>
+                <span class="data-value" id="d-side-area">2πrh</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">底面周长</span>
+                <span class="data-value" id="d-circum">2πr</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="controls">
+        <button class="btn" id="btnAnimate" onclick="toggleAnimation()">上升 / 复原</button>
+        <button class="btn" id="btnData" onclick="toggleData()">显示数据</button>
+        <div class="slider-group">
+            <label>滑块拉开(右):</label>
+            <input type="range" id="progressSlider" min="0" max="100" value="0" oninput="onSliderChange(this.value)">
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // 响应式画布
+        function resizeCanvas() {
+            const area = document.getElementById('canvas-area');
+            canvas.width = area.clientWidth;
+            canvas.height = area.clientHeight;
+            draw(progress);
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        let progress = 0;       // 0-100
+        let animating = false;
+        let animDirection = 1;  // 1=展开, -1=复原
+
+        function onSliderChange(val) {
+            progress = parseInt(val);
+            draw(progress);
+        }
+
+        function toggleAnimation() {
+            if (animating) {
+                animating = false;
+                return;
+            }
+            animating = true;
+            animDirection = progress < 50 ? 1 : -1;
+            animate();
+        }
+
+        function animate() {
+            if (!animating) return;
+            progress += animDirection * 1.2;
+            if (progress >= 100) { progress = 100; animating = false; }
+            if (progress <= 0) { progress = 0; animating = false; }
+            document.getElementById('progressSlider').value = progress;
+            draw(progress);
+            if (animating) requestAnimationFrame(animate);
+        }
+
+        function toggleData() {
+            document.getElementById('data-panel').classList.toggle('show');
+        }
+
+        function draw(p) {
+            const w = canvas.width;
+            const h = canvas.height;
+            ctx.clearRect(0, 0, w, h);
+
+            const cx = w / 2;
+            const cy = h / 2;
+            const radius = 60;
+            const cylHeight = 200;
+            const t = p / 100; // 0 to 1
+
+            // 更新数据面板
+            document.getElementById('d-progress').textContent = p + '%';
+            document.getElementById('d-side-area').textContent = (2 * Math.PI * radius * cylHeight).toFixed(0) + ' px²';
+            document.getElementById('d-circum').textContent = (2 * Math.PI * radius).toFixed(1) + ' px';
+
+            if (t < 0.01) {
+                // 完全闭合状态：绘制圆柱体
+                drawCylinder(cx, cy, radius, cylHeight);
+            } else {
+                // 展开状态
+                drawUnrolling(cx, cy, radius, cylHeight, t);
+            }
+        }
+
+        function drawCylinder(cx, cy, r, h) {
+            // 侧面 (青色)
+            ctx.fillStyle = '#20B2AA';
+            ctx.fillRect(cx - r, cy - h / 2, r * 2, h);
+
+            // 侧面边框
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx - r, cy - h / 2);
+            ctx.lineTo(cx - r, cy + h / 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx + r, cy - h / 2);
+            ctx.lineTo(cx + r, cy + h / 2);
+            ctx.stroke();
+
+            // 底面椭圆
+            ctx.fillStyle = '#1a9e97';
+            ctx.beginPath();
+            ctx.ellipse(cx, cy + h / 2, r, r * 0.3, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.stroke();
+
+            // 顶面椭圆 (红色覆盖)
+            ctx.fillStyle = '#B22222';
+            ctx.beginPath();
+            ctx.ellipse(cx, cy - h / 2, r, r * 0.3, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.stroke();
+
+            // 左侧红色矩形片
+            ctx.fillStyle = '#B22222';
+            ctx.fillRect(cx - r - 15, cy - h / 2, 15, h);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(cx - r - 15, cy - h / 2, 15, h);
+        }
+
+        function drawUnrolling(cx, cy, r, h, t) {
+            // 圆柱体逐渐展开为矩形
+            const circumference = 2 * Math.PI * r;
+            const unrolled = circumference * t; // 已展开的宽度
+            const remaining = circumference * (1 - t); // 剩余圆弧
+
+            const totalWidth = unrolled + remaining;
+            const startX = cx - totalWidth / 2;
+
+            // 已展开的矩形部分 (红色)
+            if (unrolled > 0) {
+                ctx.fillStyle = '#B22222';
+                ctx.fillRect(startX, cy - h / 2, unrolled, h);
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(startX, cy - h / 2, unrolled, h);
+            }
+
+            // 剩余的圆柱部分 (青色)
+            if (remaining > 5) {
+                const cylCx = startX + unrolled + remaining / 2;
+                const remainingR = remaining / 2;
+
+                ctx.fillStyle = '#20B2AA';
+                ctx.fillRect(cylCx - remainingR, cy - h / 2, remainingR * 2, h);
+
+                // 底面弧
+                ctx.fillStyle = '#1a9e97';
+                ctx.beginPath();
+                ctx.ellipse(cylCx, cy + h / 2, remainingR, remainingR * 0.3, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 顶面
+                ctx.beginPath();
+                ctx.ellipse(cylCx, cy - h / 2, remainingR, remainingR * 0.3, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 边框
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(cylCx - remainingR, cy - h / 2);
+                ctx.lineTo(cylCx - remainingR, cy + h / 2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(cylCx + remainingR, cy - h / 2);
+                ctx.lineTo(cylCx + remainingR, cy + h / 2);
+                ctx.stroke();
+            }
+
+            // 底部标注
+            ctx.fillStyle = '#CBD5E0';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            if (unrolled > 50) {
+                ctx.fillText('展开面 = 2πrh', startX + unrolled / 2, cy + h / 2 + 40);
+            }
+        }
+
+        // 初始化
+        resizeCanvas();
+    </script>
+</body>
+</html>
